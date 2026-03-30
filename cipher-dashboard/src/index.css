@@ -1,0 +1,114 @@
+/* ── Google Fonts ── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ──────────────────────────────────────────────
+   Base Reset
+────────────────────────────────────────────── */
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background-color: #0B0F17;
+    color: #E2E8F0;
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar       { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: #0B0F17; }
+  ::-webkit-scrollbar-thumb { background: #1E2D42; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(34,211,238,0.2); }
+}
+
+/* ──────────────────────────────────────────────
+   Component Classes
+────────────────────────────────────────────── */
+@layer components {
+  /* Base card */
+  .cipher-card {
+    @apply bg-cipher-card border border-cipher-border rounded-xl;
+  }
+
+  /* Dot-grid background pattern */
+  .grid-pattern {
+    background-image:
+      linear-gradient(rgba(34,211,238,0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(34,211,238,0.025) 1px, transparent 1px);
+    background-size: 44px 44px;
+  }
+
+  /* Neon text glow */
+  .neon-cyan   { color: #22D3EE; text-shadow: 0 0 18px rgba(34,211,238,0.5); }
+  .neon-purple { color: #A78BFA; text-shadow: 0 0 18px rgba(167,139,250,0.5); }
+  .neon-red    { color: #F87171; text-shadow: 0 0 18px rgba(248,113,113,0.5); }
+}
+
+/* ──────────────────────────────────────────────
+   Utility Animations
+────────────────────────────────────────────── */
+@layer utilities {
+  .animate-fade-in  { animation: fadeIn  0.4s ease-out forwards; }
+  .animate-slide-in { animation: slideIn 0.3s ease-out forwards; }
+  .animate-slide-up { animation: slideUp 0.35s ease-out forwards; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-10px); }
+  to   { opacity: 1; transform: translateX(0);     }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+/* ──────────────────────────────────────────────
+   Scan Line (Layer 6 Polish)
+────────────────────────────────────────────── */
+@keyframes scanLine {
+  0%   { transform: translateY(-5%);  opacity: 0; }
+  5%   { opacity: 1; }
+  95%  { opacity: 1; }
+  100% { transform: translateY(105vh); opacity: 0; }
+}
+
+.scan-line {
+  animation: scanLine 6s linear infinite;
+}
+
+/* ──────────────────────────────────────────────
+   Progress bar fill animation
+────────────────────────────────────────────── */
+@keyframes progressFill {
+  from { width: 0%; }
+  to   { width: var(--target-w, 100%); }
+}
+
+.progress-fill {
+  animation: progressFill 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* ──────────────────────────────────────────────
+   Hover glow on interactive cards
+────────────────────────────────────────────── */
+.card-hover-cyan {
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.card-hover-cyan:hover {
+  box-shadow: 0 0 0 1px rgba(34,211,238,0.15), 0 0 20px rgba(34,211,238,0.07);
+  border-color: rgba(34,211,238,0.2);
+}

@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.env
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+*.local
+.eslintcache
+.stylelintcache
+node_modules.zip
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Vite
+*.log
+.vite/
+
+# Workspace
+.vscode/
+.idea/
+.gemini/
