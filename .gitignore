@@ -1,35 +1,46 @@
-# Python
+# ── Python ────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyo
 .venv/
 env/
 venv/
 ENV/
-env.bak/
-venv.bak/
 .env
-.pytest_cache/
-
-# Node
-node_modules/
+*.egg-info/
 dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ── Node ──────────────────────────────────────────────────────────────────
+node_modules/
+cipher-dashboard/dist/
 dist-ssr/
 *.local
 .eslintcache
 .stylelintcache
-node_modules.zip
 
-# OS
+# ── Vite ──────────────────────────────────────────────────────────────────
+.vite/
+*.log
+
+# ── Test / temp output files ──────────────────────────────────────────────
+cipher-backend/_test_output.txt
+cipher-backend/_test_output_utf8.txt
+cipher-backend/_test_llm_out.txt
+
+# ── OS ────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 Desktop.ini
 
-# Vite
-*.log
-.vite/
-
-# Workspace
+# ── IDE ───────────────────────────────────────────────────────────────────
 .vscode/
 .idea/
 .gemini/
+
+# ── ML dataset (too large for git) ────────────────────────────────────────
+cipher-backend/dataset.csv

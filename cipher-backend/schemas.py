@@ -97,3 +97,22 @@ class MultiAgentResponse(BaseModel):
     # ANTI-GRAVITY additions
     trust_score: Optional[int] = Field(default=None, ge=0, le=100, description="Session trust score 0–100")
     shadow_mode: bool = Field(default=False, description="True if shadow misdirection is active")
+
+
+# ---------------------------------------------------------------------------
+# Tri-Module Fusion Models  (/predict endpoint)
+# ---------------------------------------------------------------------------
+
+class FusionRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=4000, description="The user input text to analyze")
+
+
+class FusionResponse(BaseModel):
+    """Combined response from Rule-Based + ML + LLM security modules."""
+    rule_based: Dict[str, Any] = Field(description="Output from the rule-based keyword scanner")
+    ml_model: Dict[str, Any] = Field(description="Output from the TF-IDF + Logistic Regression classifier")
+    llm: Dict[str, Any] = Field(description="Output from the Gemini LLM security agent (parsed JSON)")
+    final_decision: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Intelligently fused verdict combining all three module outputs"
+    )

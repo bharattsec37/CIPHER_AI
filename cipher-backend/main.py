@@ -7,10 +7,12 @@ Endpoints:
   GET  /                      — Root health check
   GET  /health                — Detailed health status with rule counts
   GET  /stats                 — Engine statistics (rule breakdown by category)
+  POST /predict               — Tri-module AI fusion (rule + ML + LLM)
   POST /analyze               — Single-agent prompt analysis
   POST /multi-agent/analyze   — Full 5-agent adversarial defense pipeline
 """
 
+import json
 import uuid
 import time
 import logging
@@ -24,6 +26,7 @@ from schemas import (
     HealthResponse, StatsResponse,
     MultiAgentRequest, MultiAgentResponse,
     LLMAnalyzeRequest, LLMAnalyzeResponse,
+    FusionRequest, FusionResponse,
 )
 from analyzer import (
     run_analysis,
@@ -42,6 +45,8 @@ from analyzer import (
 from agents import run_multi_agent_pipeline
 from LLM_agent import analyze_input
 from harm_detector import detect_harmful_intent
+from rule_based import rule_check
+from ml_model import predict_ml
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -175,6 +180,120 @@ async def stats():
 
 
 # ---------------------------------------------------------------------------
+# Routes — Tri-Module AI Fusion  (/predict)
+# ---------------------------------------------------------------------------
+
+def _compute_final_decision(
+    rule_result: dict,
+    ml_result: dict,
+    llm_result: dict,
+) -> dict:
+    """
+    Intelligently fuse the three module outputs into a single verdict.
+
+    Scoring:
+      - Rule-Based: categorical (HIGH=80, MEDIUM=40, LOW=0)
+      - ML Model:   risk_score (0-100)
+      - LLM:        risk_score (0-100)
+
+    Weights: rule=40%, ml=30%, llm=30%
+    """
+    # Rule-based contribution
+    rl = rule_result.get("risk_level", "LOW")
+    rule_score = {"HIGH": 80, "MEDIUM": 40, "LOW": 0}.get(rl, 0)
+
+    # ML contribution
+    ml_score = float(ml_result.get("risk_score", 0))
+
+    # LLM contribution
+    llm_score = float(llm_result.get("risk_score", 0))
+
+    fused_score = round((rule_score * 0.40) + (ml_score * 0.30) + (llm_score * 0.30), 2)
+    fused_score = min(100.0, max(0.0, fused_score))
+
+    if fused_score >= 70:
+        verdict = "BLOCK"
+        risk = "HIGH"
+    elif fused_score >= 35:
+        verdict = "SANDBOX"
+        risk = "MEDIUM"
+    else:
+        verdict = "ALLOW"
+        risk = "LOW"
+
+    # Hard override — if any module reached HIGH risk
+    ml_pred = ml_result.get("prediction", "SAFE")
+    llm_pred = llm_result.get("prediction", "SAFE")
+    if rule_score >= 80 or ml_pred == "MALICIOUS" and fused_score >= 50:
+        verdict = "BLOCK"
+        risk = "HIGH"
+    if llm_pred == "MALICIOUS" and verdict != "BLOCK":
+        verdict = max(verdict, "SANDBOX")
+
+    return {
+        "verdict": verdict,
+        "risk_level": risk,
+        "fused_score": fused_score,
+        "breakdown": {
+            "rule_score": rule_score,
+            "ml_score": ml_score,
+            "llm_score": llm_score,
+        },
+    }
+
+
+@app.post("/predict", response_model=FusionResponse, tags=["Fusion Analysis"])
+async def predict_fusion(request: FusionRequest):
+    """
+    **TRI-MODULE AI FUSION ENGINE**
+
+    Runs the input text through all three AI security layers and returns a
+    unified combined response:
+
+    | Layer | Module | Method |
+    |---|---|---|
+    | 1 | Rule-Based | `rule_check(text)` — keyword / pattern scanner |
+    | 2 | ML Model | `predict_ml(text)` — TF-IDF + Logistic Regression |
+    | 3 | LLM Agent | `analyze_input(text)` — Gemini LLM classifier |
+
+    A `final_decision` field is computed by weighting all three outputs.
+    """
+    text = request.text.strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="text cannot be empty.")
+
+    logger.info(f"[/predict] ({len(text)} chars): '{text[:80]}{'...' if len(text) > 80 else ''}'")
+
+    # ── Layer 1: Rule-Based ──────────────────────────────────────────────────
+    rule_result = rule_check(text)
+
+    # ── Layer 2: ML Model ────────────────────────────────────────────────────
+    ml_result = predict_ml(text)
+
+    # ── Layer 3: LLM Agent ───────────────────────────────────────────────────
+    # analyze_input() now returns a parsed dict directly
+    llm_json: dict = analyze_input(text)
+
+    # ── Final Decision ───────────────────────────────────────────────────────
+    final_decision = _compute_final_decision(rule_result, ml_result, llm_json)
+
+    logger.info(
+        f"[/predict] verdict={final_decision['verdict']} "
+        f"score={final_decision['fused_score']} "
+        f"rule={rule_result['risk_level']} "
+        f"ml={ml_result.get('prediction','?')} "
+        f"llm={llm_json.get('prediction','?')}"
+    )
+
+    return FusionResponse(
+        rule_based=rule_result,
+        ml_model=ml_result,
+        llm=llm_json,
+        final_decision=final_decision,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Routes — Single-Agent Analysis (FUSION ENGINE)
 # ---------------------------------------------------------------------------
 
@@ -182,55 +301,78 @@ async def stats():
 async def analyze_prompt(request: AnalyzeRequest):
     """
     LAYER 5 FUSION ENGINE
-    Combines Harm Engine + Rule Engine + LLM Classifier
+    Combines Harm Detector + Rule Engine + ML Model + LLM Classifier
+
+    | Layer | Module          | Weight |
+    |-------|-----------------|--------|
+    | 2     | Harm Detector   | 0.25   |
+    | 3     | Rule Engine     | 0.40   |
+    | 4     | ML Model        | 0.15   |
+    | 4     | LLM Classifier  | 0.20   |
     """
     prompt = request.prompt.strip()
     if not prompt:
         raise HTTPException(status_code=422, detail="Prompt cannot be empty.")
 
     logger.info(f"[/analyze] ({len(prompt)} chars): '{prompt[:80]}{'...' if len(prompt) > 80 else ''}'")
-    
-    # 1. LAYER 2 - HARM DETECTOR
+
+    # ── Layer 2: Harm Detector ───────────────────────────────────────────────
     harm_result = detect_harmful_intent(prompt)
     harm_score = harm_result["riskScore"]
-    
-    # 2. LAYER 3 - RULE ENGINE
+
+    # ── Layer 3: Rule Engine ─────────────────────────────────────────────────
     rule_result = run_analysis(prompt)
     rule_score = rule_result["risk_score"]
-    
-    # 3. LAYER 4 - LLM CLASSIFIER
+
+    # ── Layer 4a: ML Model ───────────────────────────────────────────────────
+    ml_result = predict_ml(prompt)
+    ml_score = float(ml_result.get("risk_score", 0))
+
+    # ── Layer 4b: LLM Classifier (returns a parsed dict) ────────────────────
+    llm_score = rule_score  # safe fallback
+    llm_parsed: dict = {}
     try:
-        llm_result = analyze_input(prompt)
-        llm_score = llm_result.get("risk_score", 0)
-    except BaseException as e:
-        logger.error(f"LLM Classification failed: {e}")
-        llm_score = rule_score # Fallback
-        
-    # 4. LAYER 5 - FUSION SCORING
-    # Ensure standard severe attacks like Prompt Injections trigger correctly.
-    final_score = (harm_score * 0.5) + (rule_score * 0.7) + (llm_score * 0.3)
-    # Give the rule engine dominance if it definitively triggered
+        llm_parsed = analyze_input(prompt)
+        llm_score = float(llm_parsed.get("risk_score", rule_score))
+    except Exception as e:
+        logger.warning(f"[/analyze] LLM call failed ({type(e).__name__}): {e}")
+        llm_parsed = {"error": "LLM call failed", "fallback": "rule_score used"}
+
+    # ── Layer 5: Fusion Scoring ──────────────────────────────────────────────
+    # Weights: harm=25%, rule=40%, ml=15%, llm=20%
+    final_score = (
+        (harm_score * 0.25)
+        + (rule_score * 0.40)
+        + (ml_score  * 0.15)
+        + (llm_score * 0.20)
+    )
+    # Give rule engine dominance when it definitively triggered
     if rule_score > 30:
         final_score = max(final_score, rule_score)
 
     final_score = min(100.0, max(0.0, final_score))
-    
-    # 5. LAYER 6 - DECISION ENGINE
+
+    # ── Layer 6: Decision Engine ─────────────────────────────────────────────
     decision = "ALLOW"
     if final_score > 70:
         decision = "BLOCK"
     elif final_score >= 31:
         decision = "SANDBOX"
-        
-    # OVERRIDE
+
+    # Hard override — harmful intent detected
     if harm_result["harmDetected"]:
         decision = "BLOCK"
         final_score = max(final_score, 85.0)
-        
-    # 6. LAYER 9 - SHADOW AI
-    shadow_mode = (decision == "BLOCK" or harm_result["harmDetected"])
 
-    # Update the result to construct AnalyzeResponse
+    # Hard override — ML model flagged MALICIOUS at high confidence
+    if ml_result.get("prediction") == "MALICIOUS" and ml_score >= 70:
+        decision = "BLOCK" if decision != "BLOCK" else decision
+        final_score = max(final_score, 75.0)
+
+    # ── Layer 9: Shadow AI ───────────────────────────────────────────────────
+    shadow_mode = decision == "BLOCK" or harm_result["harmDetected"]
+
+    # Build merged response
     merged_result = {
         **rule_result,
         "risk_score": final_score,
@@ -239,15 +381,24 @@ async def analyze_prompt(request: AnalyzeRequest):
         "fusion_breakdown": {
             "harm_score": harm_score,
             "rule_score": rule_score,
-            "llm_score": llm_score
+            "ml_score": ml_score,
+            "llm_score": llm_score,
+            "ml_prediction": ml_result.get("prediction", "UNKNOWN"),
+            "llm_prediction": llm_parsed.get("prediction", "UNKNOWN"),
         },
-        "shadow_mode": shadow_mode
+        "shadow_mode": shadow_mode,
     }
 
     if harm_result["harmDetected"]:
-       merged_result["reason"] = f"CRITICAL - Harmful intent detected. Phrase: {harm_result['matched_keyword']}"
-    
-    logger.info(f"[/analyze] fusion_score={final_score} decision={decision} harm={harm_result['harmDetected']}")
+        merged_result["reason"] = (
+            f"CRITICAL - Harmful intent detected. Phrase: {harm_result['matched_keyword']}"
+        )
+
+    logger.info(
+        f"[/analyze] fusion_score={final_score:.1f} decision={decision} "
+        f"harm={harm_result['harmDetected']} ml={ml_result.get('prediction','?')} "
+        f"llm={llm_parsed.get('prediction','?')}"
+    )
 
     return AnalyzeResponse(**merged_result)
 
@@ -268,7 +419,7 @@ async def llm_analyze_prompt_endpoint(request: LLMAnalyzeRequest):
         
     logger.info(f"[/llm-analyze] ({len(prompt)} chars): '{prompt[:80]}'")
     try:
-        result = analyze_input(prompt)
+        result: dict = analyze_input(prompt)  # always returns a parsed dict
         return LLMAnalyzeResponse(**result)
     except Exception as e:
         logger.error(f"[/llm-analyze] LLM error: {e}")
